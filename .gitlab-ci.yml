@@ -1,0 +1,68 @@
+stages:
+  - build
+  - style-tests
+  - integrative-tests
+  - deploy
+
+build:
+  stage: build
+  script:
+    - cd ./src/cat
+    - make s21_cat
+    - cd ../grep
+    - make s21_grep
+  artifacts:
+    paths:
+      - ./src/cat/s21_cat
+      - ./src/grep/s21_grep
+    expire_in: 30 days
+  tags:
+    - tag
+  after_script:
+    - chmod +x src/bot.sh
+    - ./src/bot.sh CI "$CI_JOB_STATUS" "$CI_COMMIT_AUTHOR" "$CI_COMMIT_BRANCH" "$CI_COMMIT_MESSAGE" "$CI_PIPELINE_ID" "build"
+
+style-tests:
+  stage: style-tests
+  needs: ["build"]
+  script:
+    - cp materials/linters/CPPLINT.cfg src
+    - python3 materials/linters/cpplint.py --extensions=c src/*/*.c
+  tags:
+    - tag
+  after_script:
+    - chmod +x src/bot.sh
+    - ./src/bot.sh CI "$CI_JOB_STATUS" "$CI_COMMIT_AUTHOR" "$CI_COMMIT_BRANCH" "$CI_COMMIT_MESSAGE" "$CI_PIPELINE_ID" "style-tests"
+
+integrative-tests:
+  stage: integrative-tests
+  needs: ["style-tests"]
+  script:
+    - cd ./src/cat 
+    - make s21_cat
+    - make test
+    - cd ../grep
+    - make s21_grep
+    - make test
+  tags:
+    - tag
+  after_script:
+    - chmod +x src/bot.sh
+    - ./src/bot.sh CI "$CI_JOB_STATUS" "$CI_COMMIT_AUTHOR" "$CI_COMMIT_BRANCH" "$CI_COMMIT_MESSAGE" "$CI_PIPELINE_ID" "integrative-tests"
+
+deploy:
+  stage: deploy
+  needs: 
+    - job: build
+    - job: integrative-tests
+      artifacts: true
+  script:
+    - chmod +x deploy.sh
+    - ./deploy.sh
+    - ls -l
+  when: manual
+  tags:
+    - tag
+  after_script:
+    - chmod +x src/bot.sh
+    - ./src/bot.sh CD "$CI_JOB_STATUS" "$CI_COMMIT_AUTHOR" "$CI_COMMIT_BRANCH" "$CI_COMMIT_MESSAGE" "$CI_PIPELINE_ID" "deploy"
